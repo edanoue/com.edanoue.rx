@@ -8,7 +8,7 @@ using Edanoue.Rx.Operators;
 
 namespace Edanoue.Rx
 {
-    public static class ObservableExtensions
+    public static partial class Observable
     {
         public static IDisposable Subscribe<T>(this IObservable<T> source, Action<T> onNext)
         {
@@ -54,6 +54,21 @@ namespace Edanoue.Rx
             }
             */
 
+            return new WhereObservable<T>(source, predicate);
+        }
+
+        /// <summary>
+        /// Filters the elements of an observable sequence based on a predicate function.
+        /// </summary>
+        /// <typeparam name="T">The type of elements in the source sequence.</typeparam>
+        /// <param name="source">The source observable sequence.</param>
+        /// <param name="predicate">A function to test each element for a condition.</param>
+        /// <returns>
+        /// An observable sequence that contains elements from the input sequence that satisfy the condition specified
+        /// by the predicate.
+        /// </returns>
+        public static IObservable<T> Where<T>(this IObservable<T> source, Func<T, int, bool> predicate)
+        {
             return new WhereObservable<T>(source, predicate);
         }
 
