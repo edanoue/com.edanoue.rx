@@ -96,6 +96,16 @@ namespace Edanoue.Rx
             return new SkipObservable<T>(source, count);
         }
 
+        public static IObservable<T> SkipWhile<T>(this IObservable<T> source, Func<T, bool> predicate)
+        {
+            return new SkipWhileObservable<T>(source, predicate);
+        }
+
+        public static IObservable<T> SkipWhile<T>(this IObservable<T> source, Func<T, int, bool> predicate)
+        {
+            return new SkipWhileObservable<T>(source, predicate);
+        }
+
         /// <summary>
         /// Converting .Select(_ => Unit.Default) sequence.
         /// </summary>
