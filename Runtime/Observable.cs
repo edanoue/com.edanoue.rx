@@ -25,5 +25,13 @@ namespace Edanoue.Rx
         {
             return new ToObservableObservable<T>(source);
         }
+
+        /// <summary>
+        /// Empty Observable. Returns only OnCompleted.
+        /// </summary>
+        private static IObservable<T> Empty<T>()
+        {
+            return ImmutableEmptyObservable<T>.Instance;
+        }
     }
 }

@@ -72,6 +72,26 @@ namespace Edanoue.Rx
             return new WhereObservable<T>(source, predicate);
         }
 
+        public static IObservable<T> Take<T>(this IObservable<T> source, int count)
+        {
+            switch (count)
+            {
+                case < 0:
+                    throw new ArgumentOutOfRangeException(nameof(count));
+                case 0:
+                    return Empty<T>();
+            }
+
+            // optimize .Take(count).Take(count)
+            if (source is TakeObservable<T> take)
+            {
+                return take.Combine(count);
+            }
+
+            return new TakeObservable<T>(source, count);
+        }
+
+
         /// <summary>
         /// 指定した個数の OnNext を無視する.
         /// </summary>

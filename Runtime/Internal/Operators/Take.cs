@@ -6,51 +6,67 @@ using System;
 
 namespace Edanoue.Rx.Operators
 {
-    internal sealed class SkipObservable<T> : OperatorObservableBase<T>
+    internal sealed class TakeObservable<T> : OperatorObservableBase<T>
     {
         private readonly int            _count;
         private readonly IObservable<T> _source;
 
-        public SkipObservable(IObservable<T> source, int count)
+        public TakeObservable(IObservable<T> source, int count)
         {
             _source = source;
             _count = count;
         }
 
-        // optimize for .Skip().Skip()
+        // optimize combiner
+
         public IObservable<T> Combine(int count)
         {
-            // use sum
             // xs = 6
-            // xs.Skip(2) = 4
-            // xs.Skip(2).Skip(3) = 1
+            // xs.Take(5) = 5         | xs.Take(3) = 3
+            // xs.Take(5).Take(3) = 3 | xs.Take(3).Take(5) = 3
 
-            return new SkipObservable<T>(_source, _count + count);
+            // use minimum one
+            return _count <= count
+                ? this
+                : new TakeObservable<T>(_source, count);
         }
 
         protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
         {
-            return _source.Subscribe(new Skip(this, observer, cancel));
+            return _source.Subscribe(new Take(this, observer, cancel));
         }
 
-        private sealed class Skip : OperatorObserverBase<T, T>
+        private sealed class Take : OperatorObserverBase<T, T>
         {
-            private int _remaining;
+            private int _rest;
 
-            public Skip(SkipObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(observer, cancel)
+            public Take(TakeObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(observer, cancel)
             {
-                _remaining = parent._count;
+                _rest = parent._count;
             }
 
             public override void OnNext(T value)
             {
-                if (_remaining <= 0)
+                if (_rest <= 0)
                 {
-                    Observer.OnNext(value);
+                    return;
                 }
-                else
+
+                _rest -= 1;
+                Observer.OnNext(value);
+
+                if (_rest > 0)
                 {
-                    _remaining--;
+                    return;
+                }
+
+                try
+                {
+                    Observer.OnCompleted();
+                }
+                finally
+                {
+                    Dispose();
                 }
             }
 
