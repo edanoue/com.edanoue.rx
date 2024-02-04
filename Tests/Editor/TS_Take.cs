@@ -1,6 +1,7 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
 #nullable enable
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -16,7 +17,7 @@ namespace Edanoue.Rx
             var isCompleted = false;
             using var subscription = a
                 .Take(3)
-                .Subscribe(x => list.Add(x), () => { isCompleted = true; });
+                .Subscribe(list.Add, () => { isCompleted = true; });
 
             a.OnNext(1);
             a.OnNext(2);
@@ -40,7 +41,7 @@ namespace Edanoue.Rx
             using var subscription = a
                 .Take(5)
                 .Take(3)
-                .Subscribe(x => list.Add(x));
+                .Subscribe(list.Add);
 
             a.OnNext(1);
             a.OnNext(2);
@@ -58,12 +59,27 @@ namespace Edanoue.Rx
             var isCompleted = false;
             using var subscription = a
                 .Take(0)
-                .Subscribe(x => list.Add(x), () => { isCompleted = true; });
+                .Subscribe(list.Add, () => { isCompleted = true; });
 
             Assert.IsTrue(isCompleted);
             a.OnNext(1);
             a.OnNext(2);
             CollectionAssert.AreEqual(list, new int[] { });
+        }
+
+        [Test]
+        public void Take4()
+        {
+            // Take が 0 の場合, Empty が返る
+            using var a = new Subject<int>();
+            var list = new List<int>();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+            {
+                using var subscription = a
+                    .Take(-1)
+                    .Subscribe(list.Add);
+            });
         }
     }
 }
