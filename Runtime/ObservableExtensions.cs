@@ -95,5 +95,13 @@ namespace Edanoue.Rx
 
             return new SkipObservable<T>(source, count);
         }
+
+        /// <summary>
+        /// Converting .Select(_ => Unit.Default) sequence.
+        /// </summary>
+        public static IObservable<Unit> AsUnitObservable<T>(this IObservable<T> source)
+        {
+            return new AsUnitObservableObservable<T>(source);
+        }
     }
 }

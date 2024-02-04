@@ -5,7 +5,7 @@ using System;
 
 namespace Edanoue.Rx.Operators
 {
-    internal class MergeObservable<T> : OperatorObservableBase<T>
+    internal sealed class MergeObservable<T> : OperatorObservableBase<T>
     {
         private readonly IObservable<IObservable<T>> _sources;
 
@@ -19,7 +19,7 @@ namespace Edanoue.Rx.Operators
             return new MergeOuterObserver(this, observer, cancel).Run();
         }
 
-        private class MergeOuterObserver : OperatorObserverBase<IObservable<T>, T>
+        private sealed class MergeOuterObserver : OperatorObserverBase<IObservable<T>, T>
         {
             private readonly CompositeDisposable        _collectionDisposable;
             private readonly object                     _gate = new();
@@ -86,7 +86,7 @@ namespace Edanoue.Rx.Operators
                 }
             }
 
-            private class Merge : OperatorObserverBase<T, T>
+            private sealed class Merge : OperatorObserverBase<T, T>
             {
                 private readonly IDisposable        _cancel;
                 private readonly MergeOuterObserver _parent;
