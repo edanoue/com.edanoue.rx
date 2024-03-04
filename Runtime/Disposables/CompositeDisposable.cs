@@ -12,8 +12,8 @@ namespace Edanoue.Rx
     {
         private const    int                _SHRINK_THRESHOLD = 64;
         private readonly object             _gate             = new();
-        private          List<IDisposable?> _disposables;
-        private          bool               _disposed;
+        private          bool               _isDisposed;
+        private          List<IDisposable?> _list;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:System.Reactive.Disposables.CompositeDisposable" /> class with no
@@ -21,7 +21,7 @@ namespace Edanoue.Rx
         /// </summary>
         public CompositeDisposable()
         {
-            _disposables = new List<IDisposable?>();
+            _list = new List<IDisposable?>();
         }
 
         /// <summary>
@@ -37,7 +37,7 @@ namespace Edanoue.Rx
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             }
 
-            _disposables = new List<IDisposable?>(capacity);
+            _list = new List<IDisposable?>(capacity);
         }
 
         /// <summary>
@@ -48,8 +48,8 @@ namespace Edanoue.Rx
         /// <exception cref="ArgumentNullException"><paramref name="disposables" /> is null.</exception>
         public CompositeDisposable(params IDisposable[] disposables)
         {
-            _disposables = new List<IDisposable?>(disposables);
-            Count = _disposables.Count;
+            _list = new List<IDisposable?>(disposables);
+            Count = _list.Count;
         }
 
         /// <summary>
@@ -60,8 +60,8 @@ namespace Edanoue.Rx
         /// <exception cref="ArgumentNullException"><paramref name="disposables" /> is null.</exception>
         public CompositeDisposable(IEnumerable<IDisposable> disposables)
         {
-            _disposables = new List<IDisposable?>(disposables);
-            Count = _disposables.Count;
+            _list = new List<IDisposable?>(disposables);
+            Count = _list.Count;
         }
 
         /// <summary>
@@ -80,10 +80,10 @@ namespace Edanoue.Rx
 
             lock (_gate)
             {
-                shouldDispose = _disposed;
-                if (!_disposed)
+                shouldDispose = _isDisposed;
+                if (!_isDisposed)
                 {
-                    _disposables.Add(item);
+                    _list.Add(item);
                     Count++;
                 }
             }
@@ -106,7 +106,7 @@ namespace Edanoue.Rx
 
             lock (_gate)
             {
-                if (!_disposed)
+                if (!_isDisposed)
                 {
                     //
                     // List<T> doesn't shrink the size of the underlying array but does collapse the array
@@ -115,23 +115,23 @@ namespace Edanoue.Rx
                     // cycles on the Array.Copy imposed by Remove, we use a null sentinel value. We also
                     // do manual Swiss cheese detection to shrink the list if there's a lot of holes in it.
                     //
-                    var i = _disposables.IndexOf(item);
+                    var i = _list.IndexOf(item);
                     if (i >= 0)
                     {
                         shouldDispose = true;
-                        _disposables[i] = null;
+                        _list[i] = null;
                         Count--;
 
-                        if (_disposables.Capacity > _SHRINK_THRESHOLD && Count < _disposables.Capacity / 2)
+                        if (_list.Capacity > _SHRINK_THRESHOLD && Count < _list.Capacity / 2)
                         {
-                            var old = _disposables;
-                            _disposables = new List<IDisposable?>(_disposables.Capacity / 2);
+                            var old = _list;
+                            _list = new List<IDisposable?>(_list.Capacity / 2);
 
                             foreach (var d in old)
                             {
                                 if (d != null)
                                 {
-                                    _disposables.Add(d);
+                                    _list.Add(d);
                                 }
                             }
                         }
@@ -155,8 +155,8 @@ namespace Edanoue.Rx
             IDisposable?[]? currentDisposables;
             lock (_gate)
             {
-                currentDisposables = _disposables.ToArray();
-                _disposables.Clear();
+                currentDisposables = _list.ToArray();
+                _list.Clear();
                 Count = 0;
             }
 
@@ -176,7 +176,7 @@ namespace Edanoue.Rx
         {
             lock (_gate)
             {
-                return _disposables.Contains(item);
+                return _list.Contains(item);
             }
         }
 
@@ -205,7 +205,7 @@ namespace Edanoue.Rx
             lock (_gate)
             {
                 var disArray = new List<IDisposable>();
-                foreach (var item in _disposables)
+                foreach (var item in _list)
                 {
                     if (item != null)
                     {
@@ -232,7 +232,7 @@ namespace Edanoue.Rx
 
             lock (_gate)
             {
-                foreach (var d in _disposables)
+                foreach (var d in _list)
                 {
                     if (d != null)
                     {
@@ -262,11 +262,11 @@ namespace Edanoue.Rx
 
             lock (_gate)
             {
-                if (!_disposed)
+                if (!_isDisposed)
                 {
-                    _disposed = true;
-                    currentDisposables = _disposables.ToArray();
-                    _disposables.Clear();
+                    _isDisposed = true;
+                    currentDisposables = _list.ToArray();
+                    _list.Clear();
                     Count = 0;
                 }
             }

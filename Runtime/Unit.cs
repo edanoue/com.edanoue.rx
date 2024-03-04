@@ -2,18 +2,13 @@
 
 #nullable enable
 using System;
-using System.Runtime.CompilerServices;
 
 namespace Edanoue.Rx
 {
     [Serializable]
     public readonly struct Unit : IEquatable<Unit>
     {
-        public static Unit Default
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get;
-        } = new();
+        public static readonly Unit Default = default;
 
         public bool Equals(Unit other)
         {
