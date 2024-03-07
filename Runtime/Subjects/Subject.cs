@@ -2,162 +2,130 @@
 
 #nullable enable
 using System;
-using Edanoue.Rx.Internal;
+using System.Threading;
+using Edanoue.Rx.Collections;
 
 namespace Edanoue.Rx
 {
-    public sealed class Subject<T> : ISubject<T>, IDisposable
+    public sealed class Subject<T> : Observable<T>, ISubject<T>, IDisposable
     {
-        private readonly object _observerLock = new();
-        private          bool   _isDisposed;
+        private CompleteState              _completeState; // struct(int, IntPtr)
+        private FreeListCore<Subscription> _list; // struct(array, int)
 
-        private bool         _isStopped;
-        private Exception?   _lastError;
-        private IObserver<T> _outObserver = NoOpObserver<T>.Default;
+        public Subject()
+        {
+            // use self as gate(reduce memory usage), this is slightly dangerous so don't lock this in user.
+            _list = new FreeListCore<Subscription>(this);
+        }
+
+        public bool IsDisposed => _completeState.IsDisposed;
 
         public void Dispose()
         {
-            lock (_observerLock)
-            {
-                _isDisposed = true;
-                _outObserver = DisposedObserver<T>.Default;
-            }
-        }
-
-        public void OnCompleted()
-        {
-            IObserver<T> old;
-            lock (_observerLock)
-            {
-                ThrowIfDisposed();
-                if (_isStopped)
-                {
-                    return;
-                }
-
-                old = _outObserver;
-                _outObserver = NoOpObserver<T>.Default;
-                _isStopped = true;
-            }
-
-            old.OnCompleted();
-        }
-
-        public void OnError(Exception error)
-        {
-            IObserver<T> old;
-            lock (_observerLock)
-            {
-                ThrowIfDisposed();
-                if (_isStopped)
-                {
-                    return;
-                }
-
-                old = _outObserver;
-                _outObserver = NoOpObserver<T>.Default;
-                _isStopped = true;
-                _lastError = error;
-            }
-
-            old.OnError(error);
+            Dispose(true);
         }
 
         public void OnNext(T value)
         {
-            _outObserver.OnNext(value);
+            if (_completeState.IsCompleted)
+            {
+                return;
+            }
+
+            foreach (var subscription in _list.AsSpan())
+            {
+                subscription?.Observer.OnNext(value);
+            }
         }
 
-        public IDisposable Subscribe(IObserver<T> observer)
+        public void OnErrorResume(Exception error)
         {
-            Exception? ex;
-
-            lock (_observerLock)
+            if (_completeState.IsCompleted)
             {
-                ThrowIfDisposed();
+                return;
+            }
 
-                // まだ Completed ではないばあい
-                if (!_isStopped)
+            foreach (var subscription in _list.AsSpan())
+            {
+                subscription?.Observer.OnErrorResume(error);
+            }
+        }
+
+        public void OnCompleted(Result result)
+        {
+            var status = _completeState.TrySetResult(result);
+            if (status != CompleteState.ResultStatus.Done)
+            {
+                return; // already completed
+            }
+
+            foreach (var subscription in _list.AsSpan())
+            {
+                subscription?.Observer.OnCompleted(result);
+            }
+        }
+
+        protected override IDisposable SubscribeCore(Observer<T> observer)
+        {
+            var result = _completeState.TryGetResult();
+            if (result != null)
+            {
+                observer.OnCompleted(result.Value);
+                return Disposable.Empty;
+            }
+
+            var subscription = new Subscription(this, observer); // create subscription and add observer to list.
+
+            // need to check called completed during adding
+            result = _completeState.TryGetResult();
+            if (result != null)
+            {
+                subscription.Observer.OnCompleted(result.Value);
+                subscription.Dispose();
+                return Disposable.Empty;
+            }
+
+            return subscription;
+        }
+
+        public void Dispose(bool callOnCompleted)
+        {
+            if (_completeState.TrySetDisposed(out var alreadyCompleted))
+            {
+                if (callOnCompleted && !alreadyCompleted)
                 {
-                    if (_outObserver is ListObserver<T> listObserver)
+                    // not yet disposed so can call list iteration
+                    foreach (var subscription in _list.AsSpan())
                     {
-                        _outObserver = listObserver.Add(observer);
+                        subscription?.Observer.OnCompleted();
                     }
-                    else
-                    {
-                        var current = _outObserver;
-                        if (current is NoOpObserver<T>)
-                        {
-                            _outObserver = observer;
-                        }
-                        else
-                        {
-                            _outObserver =
-                                new ListObserver<T>(new ImmutableList<IObserver<T>>(new[] { current, observer }));
-                        }
-                    }
-
-                    return new Subscription(this, observer);
                 }
 
-                ex = _lastError;
-            }
-
-            if (ex is not null)
-            {
-                observer.OnError(ex);
-            }
-            else
-            {
-                observer.OnCompleted();
-            }
-
-            return Disposable.Empty;
-        }
-
-        private void ThrowIfDisposed()
-        {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException("");
+                _list.Dispose();
             }
         }
 
         private sealed class Subscription : IDisposable
         {
-            private readonly object        _gate = new();
-            private          Subject<T>?   _parent;
-            private          IObserver<T>? _unsubscribeTarget;
+            private readonly int         _removeKey;
+            public readonly  Observer<T> Observer;
+            private          Subject<T>? _parent;
 
-            public Subscription(Subject<T> parent, IObserver<T> unsubscribeTarget)
+            public Subscription(Subject<T> parent, Observer<T> observer)
             {
                 _parent = parent;
-                _unsubscribeTarget = unsubscribeTarget;
+                Observer = observer;
+                parent._list.Add(this, out _removeKey); // for the thread-safety, add and set removeKey in same lock.
             }
 
             public void Dispose()
             {
-                lock (_gate)
+                // _parent に null を代入する, 以前が nullではない場合 Remove が呼ばれる
+                var oldParent = Interlocked.Exchange(ref _parent, null);
+                if (oldParent != null)
                 {
-                    if (_parent is null)
-                    {
-                        return;
-                    }
-
-                    lock (_parent._observerLock)
-                    {
-                        if (_parent._outObserver is ListObserver<T> listObserver)
-                        {
-                            _parent._outObserver = listObserver.Remove(_unsubscribeTarget);
-                        }
-                        else
-                        {
-                            _parent._outObserver = NoOpObserver<T>.Default;
-                        }
-
-                        _unsubscribeTarget = null;
-                        _parent = null;
-                    }
+                    // removeKey is index, will reuse if remove completed so only allows to call from here and must not call twice.
+                    oldParent._list.Remove(_removeKey);
                 }
             }
         }

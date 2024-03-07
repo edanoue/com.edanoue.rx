@@ -3,35 +3,157 @@
 #nullable enable
 
 using System;
-using System.Collections.Generic;
-using Edanoue.Rx.Operators;
+using System.Threading;
 
 namespace Edanoue.Rx
 {
-    public static partial class Observable
+    public abstract class Observable<T>
     {
         /// <summary>
-        /// 引数の IObservable を並列に合成. 引数の OnNext いずれかが呼ばれた場合は OnNext を実行, すべての OnComplete が呼ばれたら OnComplete を実行.
         /// </summary>
-        /// <param name="sources"></param>
-        /// <typeparam name="TSource"></typeparam>
+        /// <param name="observer"></param>
         /// <returns></returns>
-        public static IObservable<TSource> Merge<TSource>(params IObservable<TSource>[] sources)
+        public IDisposable Subscribe(Observer<T> observer)
         {
-            return new MergeObservable<TSource>(sources.ToObservable());
+            try
+            {
+                var subscription = SubscribeCore(observer);
+
+                /*
+                if (ObservableTracker.TryTrackActiveSubscription(subscription, 2, out var trackableDisposable))
+                {
+                    subscription = trackableDisposable;
+                }
+                */
+
+                observer.SourceSubscription.Disposable = subscription;
+                return observer; // return observer to make subscription chain.
+            }
+            catch
+            {
+                observer.Dispose(); // when SubscribeCore failed, auto detach caller observer
+                throw;
+            }
         }
 
-        private static IObservable<T> ToObservable<T>(this IEnumerable<T> source)
+        protected abstract IDisposable SubscribeCore(Observer<T> observer);
+    }
+
+    public abstract class Observer<T> : IDisposable
+    {
+        private int _calledOnCompleted;
+        private int _disposed;
+
+        /*
+#if DEBUG
+        [Obsolete("Only allow in Observable<T>.")]
+#endif
+        */
+        internal SingleAssignmentDisposableCore SourceSubscription;
+
+        public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+        private bool IsCalledCompleted => Volatile.Read(ref _calledOnCompleted) != 0;
+
+        // enable/disable auto dispose on completed.
+        protected virtual bool AutoDisposeOnCompleted => true;
+
+        public void Dispose()
         {
-            return new ToObservableObservable<T>(source);
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            DisposeCore(); // Dispose self
+            SourceSubscription.Dispose(); // Dispose attached parent
         }
 
-        /// <summary>
-        /// Empty Observable. Returns only OnCompleted.
-        /// </summary>
-        private static IObservable<T> Empty<T>()
+        public void OnNext(T value)
         {
-            return ImmutableEmptyObservable<T>.Instance;
+            if (IsDisposed || IsCalledCompleted)
+            {
+                return;
+            }
+
+            try
+            {
+                OnNextCore(value);
+            }
+            catch (Exception ex)
+            {
+                OnErrorResume(ex);
+            }
+        }
+
+        protected abstract void OnNextCore(T value);
+
+        public void OnErrorResume(Exception error)
+        {
+            if (IsDisposed || IsCalledCompleted)
+            {
+                return;
+            }
+
+            try
+            {
+                OnErrorResumeCore(error);
+            }
+            catch (Exception ex)
+            {
+                ObservableSystem.GetUnhandledExceptionHandler().Invoke(ex);
+            }
+        }
+
+        protected abstract void OnErrorResumeCore(Exception error);
+
+        public void OnCompleted(Result result)
+        {
+            if (Interlocked.Exchange(ref _calledOnCompleted, 1) != 0)
+            {
+                return;
+            }
+
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            var disposeOnFinally = AutoDisposeOnCompleted;
+            try
+            {
+                OnCompletedCore(result);
+            }
+            catch (Exception ex)
+            {
+                disposeOnFinally = true;
+                ObservableSystem.GetUnhandledExceptionHandler().Invoke(ex);
+            }
+            finally
+            {
+                if (disposeOnFinally)
+                {
+                    Dispose();
+                }
+            }
+        }
+
+        protected abstract void OnCompletedCore(Result result);
+
+        protected virtual void DisposeCore()
+        {
+        }
+    }
+
+    public static class ObserverExtensions
+    {
+        public static void OnCompleted<T>(this Observer<T> observer)
+        {
+            observer.OnCompleted(Result.Success);
+        }
+
+        public static void OnCompleted<T>(this Observer<T> observer, Exception exception)
+        {
+            observer.OnCompleted(Result.Failure(exception));
         }
     }
 }

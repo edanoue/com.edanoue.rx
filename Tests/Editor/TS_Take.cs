@@ -17,7 +17,7 @@ namespace Edanoue.Rx
             var isCompleted = false;
             using var subscription = a
                 .Take(3)
-                .Subscribe(list.Add, () => { isCompleted = true; });
+                .Subscribe(list.Add, r => { isCompleted = true; });
 
             a.OnNext(1);
             a.OnNext(2);
@@ -59,7 +59,7 @@ namespace Edanoue.Rx
             var isCompleted = false;
             using var subscription = a
                 .Take(0)
-                .Subscribe(list.Add, () => { isCompleted = true; });
+                .Subscribe(list.Add, r => { isCompleted = true; });
 
             Assert.IsTrue(isCompleted);
             a.OnNext(1);

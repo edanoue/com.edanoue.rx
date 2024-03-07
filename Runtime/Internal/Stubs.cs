@@ -7,7 +7,33 @@ namespace Edanoue.Rx.Internal
 {
     internal static class Stubs
     {
-        public static readonly Action            NoOp  = () => { };
-        public static readonly Action<Exception> Throw = ex => { ex.Throw(); };
+        internal static readonly Action<Result> HandleResult = static x =>
+        {
+            if (x.IsFailure)
+            {
+                ObservableSystem.GetUnhandledExceptionHandler().Invoke(x.Exception!);
+            }
+        };
+    }
+
+    internal static class Stubs<T>
+    {
+        internal static readonly Func<T, T> ReturnSelf = static x => x;
+
+        // TState
+
+        internal static readonly Action<Exception, T> HandleException = static (x, _) =>
+        {
+            ObservableSystem.GetUnhandledExceptionHandler().Invoke(x);
+        };
+
+
+        internal static readonly Action<Result, T> HandleResult = static (x, _) =>
+        {
+            if (x.IsFailure)
+            {
+                ObservableSystem.GetUnhandledExceptionHandler().Invoke(x.Exception!);
+            }
+        };
     }
 }

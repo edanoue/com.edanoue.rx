@@ -1,6 +1,5 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
-#nullable enable
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -18,7 +17,7 @@ namespace Edanoue.Rx
 
             var list = new List<int>();
             var isComplete = false;
-            using var subscription = Observable.Merge(s1, s2, s3).Subscribe(list.Add, () => isComplete = true);
+            using var subscription = Observable.Merge(s1, s2, s3).Subscribe(list.Add, r => isComplete = true);
 
             // Commit value
             s1.OnNext(10);

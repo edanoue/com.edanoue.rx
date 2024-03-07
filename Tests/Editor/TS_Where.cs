@@ -34,7 +34,10 @@ namespace Edanoue.Rx
             using var a = new Subject<int>();
 
             var list = new List<int>();
-            using var subscription = a.Where(x => x % 3 == 0).Where(x => x % 5 == 0).Subscribe(x => list.Add(x));
+            using var subscription = a
+                .Where(x => x % 3 == 0)
+                .Where(x => x % 5 == 0)
+                .Subscribe(list, (x, l) => l.Add(x));
 
             a.OnNext(3);
             a.OnNext(5);

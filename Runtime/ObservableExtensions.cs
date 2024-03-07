@@ -4,165 +4,135 @@
 
 using System;
 using Edanoue.Rx.Internal;
-using Edanoue.Rx.Operators;
 
 namespace Edanoue.Rx
 {
     public static partial class Observable
     {
-        public static IDisposable Subscribe<T>(this IObservable<T> source, Action<T> onNext)
+        public static IDisposable Subscribe<T>(this Observable<T> source)
         {
-            return source.Subscribe(Observer.CreateSubscribeObserver(onNext, Stubs.Throw, Stubs.NoOp));
+            return source.Subscribe(new NopObserver<T>());
         }
 
-        public static IDisposable Subscribe<T>(this IObservable<T> source, Action<T> onNext, Action<Exception> onError)
+        public static IDisposable Subscribe<T>(this Observable<T> source, Action<T> onNext)
         {
-            return source.Subscribe(Observer.CreateSubscribeObserver(onNext, onError, Stubs.NoOp));
+            return source.Subscribe(new AnonymousObserver<T>(onNext, ObservableSystem.GetUnhandledExceptionHandler(),
+                Stubs.HandleResult));
         }
 
-        public static IDisposable Subscribe<T>(this IObservable<T> source, Action<T> onNext, Action onCompleted)
+        public static IDisposable Subscribe<T>(this Observable<T> source, Action<T> onNext, Action<Result> onCompleted)
         {
-            return source.Subscribe(Observer.CreateSubscribeObserver(onNext, Stubs.Throw, onCompleted));
+            return source.Subscribe(new AnonymousObserver<T>(onNext, ObservableSystem.GetUnhandledExceptionHandler(),
+                onCompleted));
         }
 
-        public static IDisposable Subscribe<T>(this IObservable<T> source, Action<T> onNext, Action<Exception> onError,
-            Action onCompleted)
+        public static IDisposable Subscribe<T>(this Observable<T> source, Action<T> onNext,
+            Action<Exception> onErrorResume, Action<Result> onCompleted)
         {
-            return source.Subscribe(Observer.CreateSubscribeObserver(onNext, onError, onCompleted));
+            return source.Subscribe(new AnonymousObserver<T>(onNext, onErrorResume, onCompleted));
         }
 
-        /// <summary>
-        /// OnNext の内容を条件式でフィルタリング.
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="predicate">条件式</param>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
-        public static IObservable<T> Where<T>(this IObservable<T> source, Func<T, bool> predicate)
+        // with state
+
+        public static IDisposable Subscribe<T, TState>(this Observable<T> source, TState state,
+            Action<T, TState> onNext)
         {
-            // Optimized for Where().Where()
-            if (source is WhereObservable<T> prevWhere)
+            return source.Subscribe(new AnonymousObserver<T, TState>(onNext, Stubs<TState>.HandleException,
+                Stubs<TState>.HandleResult, state));
+        }
+
+        public static IDisposable Subscribe<T, TState>(this Observable<T> source, TState state,
+            Action<T, TState> onNext, Action<Result, TState> onCompleted)
+        {
+            return source.Subscribe(new AnonymousObserver<T, TState>(onNext, Stubs<TState>.HandleException, onCompleted,
+                state));
+        }
+
+        public static IDisposable Subscribe<T, TState>(this Observable<T> source, TState state,
+            Action<T, TState> onNext, Action<Exception, TState> onErrorResume, Action<Result, TState> onCompleted)
+        {
+            return source.Subscribe(new AnonymousObserver<T, TState>(onNext, onErrorResume, onCompleted, state));
+        }
+    }
+
+    internal sealed class NopObserver<T> : Observer<T>
+    {
+        protected override void OnNextCore(T value)
+        {
+        }
+
+        protected override void OnErrorResumeCore(Exception error)
+        {
+            ObservableSystem.GetUnhandledExceptionHandler().Invoke(error);
+        }
+
+        protected override void OnCompletedCore(Result result)
+        {
+            if (result.IsFailure)
             {
-                return prevWhere.CombinePredicate(predicate);
+                ObservableSystem.GetUnhandledExceptionHandler().Invoke(result.Exception!);
             }
+        }
+    }
 
-            /*
-            var selectObservable = source as UniRx.Operators.ISelect<T>;
-            if (selectObservable != null)
-            {
-                return selectObservable.CombinePredicate(predicate);
-            }
-            */
+    internal sealed class AnonymousObserver<T> : Observer<T>
+    {
+        private readonly Action<Result>    _onCompleted;
+        private readonly Action<Exception> _onErrorResume;
+        private readonly Action<T>         _onNext;
 
-            return new WhereObservable<T>(source, predicate);
+        public AnonymousObserver(Action<T> onNext, Action<Exception> onErrorResume, Action<Result> onCompleted)
+        {
+            _onNext = onNext;
+            _onErrorResume = onErrorResume;
+            _onCompleted = onCompleted;
         }
 
-        /// <summary>
-        /// Filters the elements of an observable sequence based on a predicate function.
-        /// </summary>
-        /// <typeparam name="T">The type of elements in the source sequence.</typeparam>
-        /// <param name="source">The source observable sequence.</param>
-        /// <param name="predicate">A function to test each element for a condition.</param>
-        /// <returns>
-        /// An observable sequence that contains elements from the input sequence that satisfy the condition specified
-        /// by the predicate.
-        /// </returns>
-        public static IObservable<T> Where<T>(this IObservable<T> source, Func<T, int, bool> predicate)
+        protected override void OnNextCore(T value)
         {
-            return new WhereObservable<T>(source, predicate);
+            _onNext(value);
         }
 
-
-        /// <summary>
-        /// 指定した個数の OnNext を無視する.
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="count">無視する個数 (1 以上)</param>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        public static IObservable<T> Skip<T>(this IObservable<T> source, int count)
+        protected override void OnErrorResumeCore(Exception error)
         {
-            if (count < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(count));
-            }
-
-            // optimize .Skip(count).Skip(count)
-            if (source is SkipObservable<T> skip)
-            {
-                return skip.Combine(count);
-            }
-
-            return new SkipObservable<T>(source, count);
+            _onErrorResume(error);
         }
 
-        public static IObservable<T> SkipWhile<T>(this IObservable<T> source, Func<T, bool> predicate)
+        protected override void OnCompletedCore(Result complete)
         {
-            return new SkipWhileObservable<T>(source, predicate);
+            _onCompleted(complete);
+        }
+    }
+
+    internal sealed class AnonymousObserver<T, TState> : Observer<T>
+    {
+        private readonly Action<Result, TState>    _onCompleted;
+        private readonly Action<Exception, TState> _onErrorResume;
+        private readonly Action<T, TState>         _onNext;
+        private readonly TState                    _state;
+
+        public AnonymousObserver(Action<T, TState> onNext, Action<Exception, TState> onErrorResume,
+            Action<Result, TState> onCompleted, TState state)
+        {
+            _onNext = onNext;
+            _onErrorResume = onErrorResume;
+            _onCompleted = onCompleted;
+            _state = state;
         }
 
-        public static IObservable<T> SkipWhile<T>(this IObservable<T> source, Func<T, int, bool> predicate)
+        protected override void OnNextCore(T value)
         {
-            return new SkipWhileObservable<T>(source, predicate);
+            _onNext(value, _state);
         }
 
-        /// <summary>
-        /// 指定した回数分だけ OnNext を実行する, 回数が消費された瞬間に OnCompleted が呼ばれる.
-        /// </summary>
-        /// <remarks>
-        /// 0 を指定した場合は Empty が帰る (Subscribe の時点で OnComplete が即座に呼ばれる)
-        /// </remarks>
-        /// <typeparam name="T">The type of elements in the source sequence.</typeparam>
-        /// <param name="source">The source observable sequence.</param>
-        /// <param name="count">The number of elements to take.</param>
-        /// <returns>
-        /// An observable sequence that contains the specified number of elements from the beginning of the source
-        /// sequence.
-        /// </returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the count is less than 0.</exception>
-        public static IObservable<T> Take<T>(this IObservable<T> source, int count)
+        protected override void OnErrorResumeCore(Exception error)
         {
-            switch (count)
-            {
-                case < 0:
-                    throw new ArgumentOutOfRangeException(nameof(count));
-                case 0:
-                    return Empty<T>();
-            }
-
-            // optimize .Take(count).Take(count)
-            if (source is TakeObservable<T> take)
-            {
-                return take.Combine(count);
-            }
-
-            return new TakeObservable<T>(source, count);
+            _onErrorResume(error, _state);
         }
 
-        /// <summary>
-        /// 指定した predicate が false を返すまで OnNext を実行する. その後 OnCompleted が呼ばれる.
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="predicate"></param>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
-        public static IObservable<T> TakeWhile<T>(this IObservable<T> source, Func<T, bool> predicate)
+        protected override void OnCompletedCore(Result complete)
         {
-            return new TakeWhileObservable<T>(source, predicate);
-        }
-
-        public static IObservable<T> TakeWhile<T>(this IObservable<T> source, Func<T, int, bool> predicate)
-        {
-            return new TakeWhileObservable<T>(source, predicate);
-        }
-
-        /// <summary>
-        /// Converting .Select(_ => Unit.Default) sequence.
-        /// </summary>
-        public static IObservable<Unit> AsUnitObservable<T>(this IObservable<T> source)
-        {
-            return new AsUnitObservableObservable<T>(source);
+            _onCompleted(complete, _state);
         }
     }
 }

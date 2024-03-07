@@ -8,20 +8,22 @@ namespace Edanoue.Rx
 {
     public sealed class TS_DisposableBag
     {
+        private int _value;
+
         [Test]
         [Category("Normal")]
         public void Test()
         {
+            _value = 0;
             var bag = new DisposableBag();
 
             var s1 = new Subject<int>();
             s1.AddTo(ref bag);
-            var value = 0;
 
-            using var subscription = s1.Subscribe(x => value = x);
+            using var subscription = s1.Subscribe(this, (x, t) => t._value = x);
 
             s1.OnNext(1);
-            Assert.That(value, Is.EqualTo(1));
+            Assert.That(_value, Is.EqualTo(1));
 
             // Dispose bag
             bag.Dispose();
