@@ -2,81 +2,93 @@
 
 #nullable enable
 using System;
+using System.Threading;
 
 namespace Edanoue.Rx
 {
-    // should be use Interlocked.CompareExchange for Threadsafe?
-    // but CompareExchange cause ExecutionEngineException on iOS.
-    // AOT...
-    // use lock instead
-
     public sealed class SingleAssignmentDisposable : IDisposable
     {
-        private readonly object       _gate = new();
-        private          IDisposable? _current;
-        private          bool         _disposed;
+        private SingleAssignmentDisposableCore _core;
 
-        public bool IsDisposed
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _disposed;
-                }
-            }
-        }
+        public bool IsDisposed => _core.IsDisposed;
 
         public IDisposable? Disposable
         {
-            get => _current;
-            set
-            {
-                IDisposable? old;
-                bool alreadyDisposed;
-                lock (_gate)
-                {
-                    alreadyDisposed = _disposed;
-                    old = _current;
-                    if (!alreadyDisposed)
-                    {
-                        if (value is null)
-                        {
-                            return;
-                        }
+            get => _core.Disposable;
+            set => _core.Disposable = value;
+        }
 
-                        _current = value;
-                    }
+        public void Dispose()
+        {
+            _core.Dispose();
+        }
+    }
+
+    // struct, be careful to use
+    public struct SingleAssignmentDisposableCore
+    {
+        private IDisposable? _current;
+
+        public bool IsDisposed => Volatile.Read(ref _current) == DisposedSentinel.Instance;
+
+        public IDisposable? Disposable
+        {
+            get
+            {
+                var field = Volatile.Read(ref _current);
+                if (field == DisposedSentinel.Instance)
+                {
+                    return Rx.Disposable.Empty; // don't expose sentinel
                 }
 
-                if (alreadyDisposed && value is not null)
+                return field;
+            }
+            set
+            {
+                var field = Interlocked.CompareExchange(ref _current, value, null);
+                if (field == null)
                 {
-                    value.Dispose();
+                    // ok to set.
                     return;
                 }
 
-                if (old is not null)
+                if (field == DisposedSentinel.Instance)
                 {
-                    throw new InvalidOperationException("Disposable is already set");
+                    // We've already been disposed, so dispose the value we've just been given.
+                    value?.Dispose();
+                    return;
                 }
+
+                // otherwise, invalid assignment
+                ThrowAlreadyAssignment();
             }
         }
 
         public void Dispose()
         {
-            IDisposable? old = null;
-
-            lock (_gate)
+            var field = Interlocked.Exchange(ref _current, DisposedSentinel.Instance);
+            if (field != DisposedSentinel.Instance)
             {
-                if (!_disposed)
-                {
-                    _disposed = true;
-                    old = _current;
-                    _current = null;
-                }
+                field?.Dispose();
+            }
+        }
+
+        private static void ThrowAlreadyAssignment()
+        {
+            throw new InvalidOperationException("Disposable is already assigned.");
+        }
+
+        private sealed class DisposedSentinel : IDisposable
+        {
+            public static readonly DisposedSentinel Instance = new();
+
+            private DisposedSentinel()
+            {
             }
 
-            old?.Dispose();
+            public void Dispose()
+            {
+            }
         }
     }
 }
