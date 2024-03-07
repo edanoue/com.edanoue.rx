@@ -7,7 +7,7 @@ using Edanoue.Rx.Internal;
 
 namespace Edanoue.Rx
 {
-    public static partial class Observable
+    public static class ObservableSubscribeExtensions
     {
         public static IDisposable Subscribe<T>(this Observable<T> source)
         {
