@@ -35,7 +35,7 @@ namespace Edanoue.Rx
 
             // OnCompleted な Subject を Subscribe すると すぐに OnCompleted が呼ばれる
             subject.OnCompleted();
-            subject.Subscribe(x => { }, () => { result = 1; });
+            subject.Subscribe(x => { }, r => { result = 1; });
             Assert.That(result, Is.EqualTo(1));
 
             // 再度 OnCompleted してもエラーは発生しない(特に意味がない)
