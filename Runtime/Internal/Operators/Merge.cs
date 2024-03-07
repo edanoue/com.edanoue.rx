@@ -1,143 +1,146 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
-#nullable enable
 using System;
+using System.Collections.Generic;
 
-namespace Edanoue.Rx.Operators
+namespace Edanoue.Rx
 {
-    internal sealed class MergeObservable<T> : OperatorObservableBase<T>
+    public static partial class Observable
     {
-        private readonly IObservable<IObservable<T>> _sources;
+        public static Observable<T> Merge<T>(params Observable<T>[] sources)
+        {
+            return new Merge<T>(sources);
+        }
 
-        public MergeObservable(IObservable<IObservable<T>> sources)
+        public static Observable<T> Merge<T>(this IEnumerable<Observable<T>> sources)
+        {
+            return new Merge<T>(sources);
+        }
+    }
+
+    public static partial class ObservableExtensions
+    {
+        public static Observable<T> Merge<T>(this Observable<T> source, Observable<T> second)
+        {
+            return new Merge<T>(new[] { source, second });
+        }
+    }
+
+
+    internal sealed class Merge<T> : Observable<T>
+    {
+        private readonly IEnumerable<Observable<T>> _sources;
+
+        public Merge(IEnumerable<Observable<T>> sources)
         {
             _sources = sources;
         }
 
-        protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
         {
-            return new MergeOuterObserver(this, observer, cancel).Run();
+            var merge = new MergeInternal(observer);
+            var builder = Disposable.CreateBuilder();
+
+            var count = 0;
+            foreach (var item in _sources)
+            {
+                item.Subscribe(new MergeObserver(merge)).AddTo(ref builder);
+                count++;
+            }
+
+            merge.Disposable.Disposable = builder.Build();
+
+            merge.SetSourceCount(count);
+
+            return merge;
         }
 
-        private sealed class MergeOuterObserver : OperatorObserverBase<IObservable<T>, T>
+        private sealed class MergeInternal : IDisposable
         {
-            private readonly CompositeDisposable        _collectionDisposable;
-            private readonly object                     _gate = new();
-            private readonly SingleAssignmentDisposable _sourceDisposable;
-            private          bool                       _isStopped;
+            public readonly object      Gate = new();
+            public readonly Observer<T> Observer;
+            private         int         _completeCount;
 
-            public MergeOuterObserver(MergeObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(
-                observer, cancel)
+            private int                            _sourceCount = -1; // not set yet.
+            public  SingleAssignmentDisposableCore Disposable;
+
+            public MergeInternal(Observer<T> observer)
             {
-                _collectionDisposable = new CompositeDisposable();
-                _sourceDisposable = new SingleAssignmentDisposable();
-                _collectionDisposable.Add(_sourceDisposable);
-                _sourceDisposable.Disposable = parent._sources.Subscribe(this);
+                Observer = observer;
+                Disposable = new SingleAssignmentDisposableCore();
             }
 
-            public IDisposable Run()
+            public void Dispose()
             {
-                return _collectionDisposable;
+                Disposable.Dispose();
             }
 
-            public override void OnNext(IObservable<T> value)
+            public void SetSourceCount(int count)
             {
-                var disposable = new SingleAssignmentDisposable();
-                _collectionDisposable.Add(disposable);
-                var collectionObserver = new Merge(this, disposable);
-                disposable.Disposable = value.Subscribe(collectionObserver);
-            }
-
-            public override void OnError(Exception error)
-            {
-                lock (_gate)
+                lock (Gate)
                 {
-                    try
+                    _sourceCount = count;
+                    if (_sourceCount == _completeCount)
                     {
-                        Observer.OnError(error);
-                    }
-                    finally
-                    {
+                        Observer.OnCompleted();
                         Dispose();
                     }
                 }
             }
 
-            public override void OnCompleted()
+            // when all sources are completed, then this observer is completed
+            public void TryPublishCompleted()
             {
-                _isStopped = true;
-                if (_collectionDisposable.Count == 1)
+                lock (Gate)
                 {
-                    lock (_gate)
+                    _completeCount++;
+                    if (_completeCount == _sourceCount)
                     {
-                        try
-                        {
-                            Observer.OnCompleted();
-                        }
-                        finally
-                        {
-                            Dispose();
-                        }
+                        Observer.OnCompleted();
+                        Dispose();
+                    }
+                }
+            }
+        }
+
+        private sealed class MergeObserver : Observer<T>
+        {
+            private readonly MergeInternal _parent;
+
+            public MergeObserver(MergeInternal parent)
+            {
+                _parent = parent;
+            }
+
+            protected override void OnNextCore(T value)
+            {
+                lock (_parent.Gate)
+                {
+                    _parent.Observer.OnNext(value);
+                }
+            }
+
+            protected override void OnErrorResumeCore(Exception error)
+            {
+                lock (_parent.Gate)
+                {
+                    _parent.Observer.OnErrorResume(error);
+                }
+            }
+
+            protected override void OnCompletedCore(Result result)
+            {
+                if (result.IsFailure)
+                {
+                    // when error, publish OnCompleted immediately
+                    lock (_parent.Gate)
+                    {
+                        _parent.Observer.OnCompleted(result);
                     }
                 }
                 else
                 {
-                    _sourceDisposable.Dispose();
-                }
-            }
-
-            private sealed class Merge : OperatorObserverBase<T, T>
-            {
-                private readonly IDisposable        _cancel;
-                private readonly MergeOuterObserver _parent;
-
-                public Merge(MergeOuterObserver parent, IDisposable cancel)
-                    : base(parent.Observer, cancel)
-                {
-                    _parent = parent;
-                    _cancel = cancel;
-                }
-
-                public override void OnNext(T value)
-                {
-                    lock (_parent._gate)
-                    {
-                        Observer.OnNext(value);
-                    }
-                }
-
-                public override void OnError(Exception error)
-                {
-                    lock (_parent._gate)
-                    {
-                        try
-                        {
-                            Observer.OnError(error);
-                        }
-                        finally
-                        {
-                            Dispose();
-                        }
-                    }
-                }
-
-                public override void OnCompleted()
-                {
-                    _parent._collectionDisposable.Remove(_cancel);
-                    if (_parent._isStopped && _parent._collectionDisposable.Count == 1)
-                    {
-                        lock (_parent._gate)
-                        {
-                            try
-                            {
-                                Observer.OnCompleted();
-                            }
-                            finally
-                            {
-                                Dispose();
-                            }
-                        }
-                    }
+                    _parent.TryPublishCompleted();
                 }
             }
         }

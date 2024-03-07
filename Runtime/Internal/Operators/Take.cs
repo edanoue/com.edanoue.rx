@@ -4,94 +4,77 @@
 
 using System;
 
-namespace Edanoue.Rx.Operators
+namespace Edanoue.Rx
 {
-    internal sealed class TakeObservable<T> : OperatorObservableBase<T>
+    public static partial class ObservableExtensions
     {
-        private readonly int            _count;
-        private readonly IObservable<T> _source;
+        /// <summary>
+        /// 指定した回数分だけ OnNext を実行する, 回数が消費された瞬間に OnCompleted が呼ばれる.
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="count"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public static Observable<T> Take<T>(this Observable<T> source, int count)
+        {
+            return count switch
+            {
+                < 0 => throw new ArgumentOutOfRangeException(nameof(count)),
+                0 => Observable.Empty<T>(),
+                _ => new Take<T>(source, count)
+            };
+        }
+    }
 
-        public TakeObservable(IObservable<T> source, int count)
+    internal sealed class Take<T> : Observable<T>
+    {
+        private readonly int           _count;
+        private readonly Observable<T> _source;
+
+        public Take(Observable<T> source, int count)
         {
             _source = source;
             _count = count;
         }
 
-        // optimize combiner
-
-        public IObservable<T> Combine(int count)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
         {
-            // xs = 6
-            // xs.Take(5) = 5         | xs.Take(3) = 3
-            // xs.Take(5).Take(3) = 3 | xs.Take(3).Take(5) = 3
-
-            // use minimum one
-            return _count <= count
-                ? this
-                : new TakeObservable<T>(_source, count);
+            return _source.Subscribe(new TakeInternal(observer, _count));
         }
 
-        protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
+        private sealed class TakeInternal : Observer<T>
         {
-            return _source.Subscribe(new Take(this, observer, cancel));
-        }
+            private readonly Observer<T> _observer;
+            private          int         _remaining;
 
-        private sealed class Take : OperatorObserverBase<T, T>
-        {
-            private int _rest;
-
-            public Take(TakeObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(observer, cancel)
+            public TakeInternal(Observer<T> observer, int count)
             {
-                _rest = parent._count;
+                _observer = observer;
+                _remaining = count;
             }
 
-            public override void OnNext(T value)
+            protected override void OnNextCore(T value)
             {
-                if (_rest <= 0)
+                if (_remaining > 0)
                 {
-                    return;
-                }
-
-                _rest -= 1;
-                Observer.OnNext(value);
-
-                if (_rest > 0)
-                {
-                    return;
-                }
-
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
+                    _remaining--;
+                    _observer.OnNext(value);
+                    if (_remaining == 0)
+                    {
+                        _observer.OnCompleted();
+                    }
                 }
             }
 
-            public override void OnError(Exception error)
+            protected override void OnErrorResumeCore(Exception error)
             {
-                try
-                {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnErrorResume(error);
             }
 
-            public override void OnCompleted()
+            protected override void OnCompletedCore(Result result)
             {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnCompleted(result);
             }
         }
     }

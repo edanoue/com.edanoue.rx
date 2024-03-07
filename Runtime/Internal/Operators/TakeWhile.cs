@@ -4,190 +4,132 @@
 
 using System;
 
-namespace Edanoue.Rx.Operators
+namespace Edanoue.Rx
 {
-    internal sealed class TakeWhileObservable<T> : OperatorObservableBase<T>
+    public static partial class ObservableExtensions
     {
-        private readonly Func<T, bool>?      _predicateNoIndex;
-        private readonly Func<T, int, bool>? _predicateWithIndex;
-        private readonly IObservable<T>      _source;
+        /// <summary>
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="predicate"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static Observable<T> TakeWhile<T>(this Observable<T> source, Func<T, bool> predicate)
+        {
+            return new TakeWhile<T>(source, predicate);
+        }
 
-        public TakeWhileObservable(IObservable<T> source, Func<T, bool> predicate)
+        /// <summary>
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="predicate"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static Observable<T> TakeWhile<T>(this Observable<T> source, Func<T, int, bool> predicate)
+        {
+            return new TakeWhileI<T>(source, predicate);
+        }
+    }
+
+    internal sealed class TakeWhile<T> : Observable<T>
+    {
+        private readonly Func<T, bool> _predicate;
+        private readonly Observable<T> _source;
+
+        public TakeWhile(Observable<T> source, Func<T, bool> predicate)
         {
             _source = source;
-            _predicateNoIndex = predicate;
+            _predicate = predicate;
         }
 
-        public TakeWhileObservable(IObservable<T> source, Func<T, int, bool> predicateWithIndex)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
         {
-            _source = source;
-            _predicateWithIndex = predicateWithIndex;
+            return _source.Subscribe(new TakeWhileInternal(observer, _predicate));
         }
 
-        protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
+        private sealed class TakeWhileInternal : Observer<T>
         {
-            if (_predicateNoIndex is not null)
+            private readonly Observer<T>   _observer;
+            private readonly Func<T, bool> _predicate;
+
+            public TakeWhileInternal(Observer<T> observer, Func<T, bool> predicate)
             {
-                return new TakeWhileNoIndex(this, observer, cancel).Run();
+                _observer = observer;
+                _predicate = predicate;
             }
 
-            return new TakeWhileWithIndex(this, observer, cancel).Run();
-        }
-
-        private sealed class TakeWhileNoIndex : OperatorObserverBase<T, T>
-        {
-            private readonly TakeWhileObservable<T> _parent;
-
-            public TakeWhileNoIndex(TakeWhileObservable<T> parent, IObserver<T> observer, IDisposable cancel)
-                : base(observer, cancel)
+            protected override void OnNextCore(T value)
             {
-                _parent = parent;
-            }
-
-            public IDisposable Run()
-            {
-                return _parent._source.Subscribe(this);
-            }
-
-            public override void OnNext(T value)
-            {
-                bool isPassed;
-                try
+                if (_predicate(value))
                 {
-                    isPassed = _parent._predicateNoIndex!(value);
-                }
-                catch (Exception ex)
-                {
-                    try
-                    {
-                        Observer.OnError(ex);
-                    }
-                    finally
-                    {
-                        Dispose();
-                    }
-
-                    return;
-                }
-
-                if (isPassed)
-                {
-                    Observer.OnNext(value);
+                    _observer.OnNext(value);
                 }
                 else
                 {
-                    try
-                    {
-                        Observer.OnCompleted();
-                    }
-                    finally
-                    {
-                        Dispose();
-                    }
+                    _observer.OnCompleted();
                 }
             }
 
-            public override void OnError(Exception error)
+            protected override void OnErrorResumeCore(Exception error)
             {
-                try
-                {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnErrorResume(error);
             }
 
-            public override void OnCompleted()
+            protected override void OnCompletedCore(Result result)
             {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnCompleted(result);
             }
         }
+    }
 
-        private class TakeWhileWithIndex : OperatorObserverBase<T, T>
+    internal sealed class TakeWhileI<T> : Observable<T>
+    {
+        private readonly Func<T, int, bool> _predicate;
+        private readonly Observable<T>      _source;
+
+        public TakeWhileI(Observable<T> source, Func<T, int, bool> predicate)
         {
-            private readonly TakeWhileObservable<T> _parent;
-            private          int                    _index;
+            _source = source;
+            _predicate = predicate;
+        }
 
-            public TakeWhileWithIndex(TakeWhileObservable<T> parent, IObserver<T> observer, IDisposable cancel)
-                : base(observer, cancel)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
+        {
+            return _source.Subscribe(new TakeWhileIInternal(observer, _predicate));
+        }
+
+        private sealed class TakeWhileIInternal : Observer<T>
+        {
+            private readonly Observer<T>        _observer;
+            private readonly Func<T, int, bool> _predicate;
+            private          int                _count;
+
+            public TakeWhileIInternal(Observer<T> observer, Func<T, int, bool> predicate)
             {
-                _parent = parent;
+                _observer = observer;
+                _predicate = predicate;
             }
 
-            public IDisposable Run()
+            protected override void OnNextCore(T value)
             {
-                return _parent._source.Subscribe(this);
-            }
-
-            public override void OnNext(T value)
-            {
-                bool isPassed;
-                try
+                if (_predicate(value, _count++))
                 {
-                    isPassed = _parent._predicateWithIndex!(value, _index++);
-                }
-                catch (Exception ex)
-                {
-                    try
-                    {
-                        Observer.OnError(ex);
-                    }
-                    finally
-                    {
-                        Dispose();
-                    }
-
-                    return;
-                }
-
-                if (isPassed)
-                {
-                    Observer.OnNext(value);
+                    _observer.OnNext(value);
                 }
                 else
                 {
-                    try
-                    {
-                        Observer.OnCompleted();
-                    }
-                    finally
-                    {
-                        Dispose();
-                    }
+                    _observer.OnCompleted();
                 }
             }
 
-            public override void OnError(Exception error)
+            protected override void OnErrorResumeCore(Exception error)
             {
-                try
-                {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnErrorResume(error);
             }
 
-            public override void OnCompleted()
+            protected override void OnCompletedCore(Result result)
             {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnCompleted(result);
             }
         }
     }

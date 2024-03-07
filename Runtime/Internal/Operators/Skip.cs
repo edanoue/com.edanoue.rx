@@ -1,81 +1,76 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
-#nullable enable
-
 using System;
 
-namespace Edanoue.Rx.Operators
+namespace Edanoue.Rx
 {
-    internal sealed class SkipObservable<T> : OperatorObservableBase<T>
+    public static partial class ObservableExtensions
     {
-        private readonly int            _count;
-        private readonly IObservable<T> _source;
+        /// <summary>
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="count"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public static Observable<T> Skip<T>(this Observable<T> source, int count)
+        {
+            if (count < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(count));
+            }
 
-        public SkipObservable(IObservable<T> source, int count)
+            return new Skip<T>(source, count);
+        }
+    }
+
+    internal sealed class Skip<T> : Observable<T>
+    {
+        private readonly int           _count;
+        private readonly Observable<T> _source;
+
+        public Skip(Observable<T> source, int count)
         {
             _source = source;
             _count = count;
         }
 
-        // optimize for .Skip().Skip()
-        public IObservable<T> Combine(int count)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
         {
-            // use sum
-            // xs = 6
-            // xs.Skip(2) = 4
-            // xs.Skip(2).Skip(3) = 1
-
-            return new SkipObservable<T>(_source, _count + count);
+            return _source.Subscribe(new SkipObserver(observer, _count));
         }
 
-        protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
+        private sealed class SkipObserver : Observer<T>
         {
-            return _source.Subscribe(new Skip(this, observer, cancel));
-        }
+            private readonly Observer<T> _observer;
+            private          int         _remaining;
 
-        private sealed class Skip : OperatorObserverBase<T, T>
-        {
-            private int _remaining;
-
-            public Skip(SkipObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(observer, cancel)
+            public SkipObserver(Observer<T> observer, int count)
             {
-                _remaining = parent._count;
+                _observer = observer;
+                _remaining = count;
             }
 
-            public override void OnNext(T value)
+            protected override void OnNextCore(T value)
             {
-                if (_remaining <= 0)
-                {
-                    Observer.OnNext(value);
-                }
-                else
+                if (_remaining > 0)
                 {
                     _remaining--;
                 }
-            }
-
-            public override void OnError(Exception error)
-            {
-                try
+                else
                 {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
+                    _observer.OnNext(value);
                 }
             }
 
-            public override void OnCompleted()
+            protected override void OnErrorResumeCore(Exception error)
             {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnErrorResume(error);
+            }
+
+            protected override void OnCompletedCore(Result result)
+            {
+                _observer.OnCompleted(result);
             }
         }
     }

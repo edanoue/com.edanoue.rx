@@ -1,181 +1,138 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
-#nullable enable
-
 using System;
 
-namespace Edanoue.Rx.Operators
+namespace Edanoue.Rx
 {
-    internal class SkipWhileObservable<T> : OperatorObservableBase<T>
+    public static partial class ObservableExtensions
     {
-        private readonly Func<T, bool>?      _predicateNoIndex;
-        private readonly Func<T, int, bool>? _predicateWithIndex;
-        private readonly IObservable<T>      _source;
+        /// <summary>
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="predicate"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static Observable<T> SkipWhile<T>(this Observable<T> source, Func<T, bool> predicate)
+        {
+            return new SkipWhile<T>(source, predicate);
+        }
 
-        public SkipWhileObservable(IObservable<T> source, Func<T, bool> predicate)
+        /// <summary>
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="predicate"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static Observable<T> SkipWhile<T>(this Observable<T> source, Func<T, int, bool> predicate)
+        {
+            return new SkipWhileI<T>(source, predicate);
+        }
+    }
+
+    internal sealed class SkipWhile<T> : Observable<T>
+    {
+        private readonly Func<T, bool> _predicate;
+        private readonly Observable<T> _source;
+
+        public SkipWhile(Observable<T> source, Func<T, bool> predicate)
         {
             _source = source;
-            _predicateNoIndex = predicate;
+            _predicate = predicate;
         }
 
-        public SkipWhileObservable(IObservable<T> source, Func<T, int, bool> predicateWithIndex)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
+        {
+            return _source.Subscribe(new SkipWhileObserver(observer, _predicate));
+        }
+
+        private sealed class SkipWhileObserver : Observer<T>
+        {
+            private readonly Observer<T>   _observer;
+            private readonly Func<T, bool> _predicate;
+
+            private bool _open;
+
+            public SkipWhileObserver(Observer<T> observer, Func<T, bool> predicate)
+            {
+                _observer = observer;
+                _predicate = predicate;
+            }
+
+            protected override void OnNextCore(T value)
+            {
+                if (_open)
+                {
+                    _observer.OnNext(value);
+                }
+                else if (!_predicate(value))
+                {
+                    _open = true;
+                    _observer.OnNext(value);
+                }
+            }
+
+            protected override void OnErrorResumeCore(Exception error)
+            {
+                _observer.OnErrorResume(error);
+            }
+
+            protected override void OnCompletedCore(Result result)
+            {
+                _observer.OnCompleted(result);
+            }
+        }
+    }
+
+    internal sealed class SkipWhileI<T> : Observable<T>
+    {
+        private readonly Func<T, int, bool> _predicate;
+        private readonly Observable<T>      _source;
+
+        public SkipWhileI(Observable<T> source, Func<T, int, bool> predicate)
         {
             _source = source;
-            _predicateWithIndex = predicateWithIndex;
+            _predicate = predicate;
         }
 
-        protected override IDisposable SubscribeInternal(IObserver<T> observer, IDisposable cancel)
+        protected override IDisposable SubscribeCore(Observer<T> observer)
         {
-            if (_predicateNoIndex is not null)
-            {
-                return new SkipWhileNoIndex(this, observer, cancel).Run();
-            }
-
-            return new SkipWhileWithIndex(this, observer, cancel).Run();
+            return _source.Subscribe(new SkipWhileIObserver(observer, _predicate));
         }
 
-        private class SkipWhileNoIndex : OperatorObserverBase<T, T>
+        private sealed class SkipWhileIObserver : Observer<T>
         {
-            private readonly SkipWhileObservable<T> _parent;
-            private          bool                   _isBypass;
+            private readonly Observer<T>        _observer;
+            private readonly Func<T, int, bool> _predicate;
+            private          int                _count;
+            private          bool               _open;
 
-            public SkipWhileNoIndex(SkipWhileObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(
-                observer, cancel)
+            public SkipWhileIObserver(Observer<T> observer, Func<T, int, bool> predicate)
             {
-                _parent = parent;
+                _observer = observer;
+                _predicate = predicate;
             }
 
-            public IDisposable Run()
+            protected override void OnNextCore(T value)
             {
-                return _parent._source.Subscribe(this);
-            }
-
-            public override void OnNext(T value)
-            {
-                if (!_isBypass)
+                if (_open)
                 {
-                    try
-                    {
-                        _isBypass = !_parent._predicateNoIndex!(value);
-                    }
-                    catch (Exception ex)
-                    {
-                        try
-                        {
-                            Observer.OnError(ex);
-                        }
-                        finally
-                        {
-                            Dispose();
-                        }
-
-                        return;
-                    }
-
-                    if (!_isBypass)
-                    {
-                        return;
-                    }
+                    _observer.OnNext(value);
                 }
-
-                Observer.OnNext(value);
-            }
-
-            public override void OnError(Exception error)
-            {
-                try
+                else if (!_predicate(value, _count++))
                 {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
+                    _open = true;
+                    _observer.OnNext(value);
                 }
             }
 
-            public override void OnCompleted()
+            protected override void OnErrorResumeCore(Exception error)
             {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
-            }
-        }
-
-        private class SkipWhileWithIndex : OperatorObserverBase<T, T>
-        {
-            private readonly SkipWhileObservable<T> _parent;
-            private          int                    _index;
-            private          bool                   _isBypass;
-
-            public SkipWhileWithIndex(SkipWhileObservable<T> parent, IObserver<T> observer, IDisposable cancel) : base(
-                observer, cancel)
-            {
-                _parent = parent;
+                _observer.OnErrorResume(error);
             }
 
-            public IDisposable Run()
+            protected override void OnCompletedCore(Result result)
             {
-                return _parent._source.Subscribe(this);
-            }
-
-            public override void OnNext(T value)
-            {
-                if (!_isBypass)
-                {
-                    try
-                    {
-                        _isBypass = !_parent._predicateWithIndex!(value, _index++);
-                    }
-                    catch (Exception ex)
-                    {
-                        try
-                        {
-                            Observer.OnError(ex);
-                        }
-                        finally
-                        {
-                            Dispose();
-                        }
-
-                        return;
-                    }
-
-                    if (!_isBypass)
-                    {
-                        return;
-                    }
-                }
-
-                Observer.OnNext(value);
-            }
-
-            public override void OnError(Exception error)
-            {
-                try
-                {
-                    Observer.OnError(error);
-                }
-                finally
-                {
-                    Dispose();
-                }
-            }
-
-            public override void OnCompleted()
-            {
-                try
-                {
-                    Observer.OnCompleted();
-                }
-                finally
-                {
-                    Dispose();
-                }
+                _observer.OnCompleted(result);
             }
         }
     }
