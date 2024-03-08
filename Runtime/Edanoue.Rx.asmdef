@@ -9,6 +9,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "org.nuget.microsoft.bcl.timeprovider",
+      "expression": "",
+      "define": "SUPPORT_TIME_PROVIDER"
+    }
+  ],
   "noEngineReferences": true
 }

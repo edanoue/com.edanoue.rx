@@ -10,6 +10,10 @@ namespace Edanoue.Rx
     {
         private static readonly Action<Exception> _unhandledException = DefaultUnhandledExceptionHandler;
 
+#if SUPPORT_TIME_PROVIDER
+        public static TimeProvider DefaultTimeProvider { get; set; } = TimeProvider.System;
+#endif
+
         public static Action<Exception> GetUnhandledExceptionHandler()
         {
             return _unhandledException;
@@ -19,5 +23,7 @@ namespace Edanoue.Rx
         {
             Console.WriteLine($"EdaRx UnhandledException: {exception}");
         }
+#if SUPPORT_TIME_PROVIDER
+#endif
     }
 }

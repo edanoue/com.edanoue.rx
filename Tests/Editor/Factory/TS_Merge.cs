@@ -13,11 +13,13 @@ namespace Edanoue.Rx
         {
             using var s1 = new Subject<int>();
             using var s2 = new Subject<int>();
-            using var s3 = new Subject<int>();
+            var s3 = new Subject<int>();
 
             var list = new List<int>();
             var isComplete = false;
-            using var subscription = Observable.Merge(s1, s2, s3).Subscribe(list.Add, r => isComplete = true);
+            using var subscription = Observable
+                .Merge(s1, s2, s3)
+                .Subscribe(list.Add, r => isComplete = true);
 
             // Commit value
             s1.OnNext(10);
@@ -40,7 +42,7 @@ namespace Edanoue.Rx
             Assert.That(isComplete, Is.False);
             CollectionAssert.AreEqual(list, new[] { 10, 20, 100, 50, 500 });
 
-            s3.OnCompleted();
+            s3.Dispose();
             Assert.That(isComplete, Is.True);
         }
     }

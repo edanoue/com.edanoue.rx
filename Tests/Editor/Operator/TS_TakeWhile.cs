@@ -16,7 +16,10 @@ namespace Edanoue.Rx
             var isCompleted = false;
             using var subscription = a
                 .TakeWhile(x => x * 2 <= 4)
-                .Subscribe(list.Add, r => { isCompleted = true; });
+                .Subscribe(
+                    list.Add,
+                    r => isCompleted = true
+                );
 
             a.OnNext(1); // 2
             a.OnNext(2); // 4

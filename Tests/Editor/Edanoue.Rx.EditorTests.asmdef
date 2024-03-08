@@ -11,12 +11,19 @@
   "allowUnsafeCode": false,
   "overrideReferences": true,
   "precompiledReferences": [
-    "nunit.framework.dll"
+    "nunit.framework.dll",
+    "Microsoft.Bcl.TimeProvider.dll"
   ],
   "autoReferenced": false,
   "defineConstraints": [
     "UNITY_INCLUDE_TESTS"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "org.nuget.microsoft.bcl.timeprovider",
+      "expression": "",
+      "define": "SUPPORT_TIME_PROVIDER"
+    }
+  ],
   "noEngineReferences": true
 }
