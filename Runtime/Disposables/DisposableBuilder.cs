@@ -187,7 +187,7 @@ namespace Edanoue.Rx
 
         public CancellationTokenRegistration RegisterTo(CancellationToken cancellationToken)
         {
-            return Build().AddTo(cancellationToken);
+            return Build().RegisterTo(cancellationToken);
         }
 
         public void Dispose()

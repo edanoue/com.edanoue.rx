@@ -53,7 +53,7 @@ namespace Edanoue.Rx
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public static CancellationTokenRegistration AddTo(this IDisposable disposable,
+        public static CancellationTokenRegistration RegisterTo(this IDisposable disposable,
             CancellationToken cancellationToken)
         {
             if (!cancellationToken.CanBeCanceled)
