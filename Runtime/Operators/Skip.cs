@@ -1,5 +1,6 @@
 ﻿// Copyright Edanoue, Inc. All Rights Reserved.
 
+#nullable enable
 using System;
 
 namespace Edanoue.Rx
