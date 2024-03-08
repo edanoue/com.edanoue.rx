@@ -117,12 +117,23 @@ s.OnNext(4); // > 4
 ### Debounce
 
 ```csharp
+var result = 0;
 var s = new Subject<int>();
-s.Debounce(TimeSpan.FromSeconds(1f)).Subscribe(x => Debug.Log(x));
 
-s.OnNext(1); // >
+// 通知が来るたびに2秒のタイマーをリセットする, 2秒立ったら最新の値をセットする
+s.Debounce(TimeSpan.FromSeconds(2f)).Subscribe(x => result = x);
 
-// ...
-// 1秒以上間隔が空くと値が通る
-s.OnNext(2); // > 2
+s.OnNext(1);
+s.OnNext(2);
+Debug.Log(result) // >
+
+// 00:01:00
+s.OnNext(3);
+Debug.Log(reslut) // >
+
+// 00:02:00
+Debug.Log(reslut) // >
+
+// 00:03:00
+Debug.Log(reslut) // > 3
 ```
