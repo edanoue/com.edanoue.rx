@@ -123,17 +123,50 @@ var s = new Subject<int>();
 // 通知が来るたびに2秒のタイマーをリセットする, 2秒立ったら最新の値をセットする
 s.Debounce(TimeSpan.FromSeconds(2f)).Subscribe(x => result = x);
 
+// 00:00:00
 s.OnNext(1);
 s.OnNext(2);
 Debug.Log(result) // >
 
 // 00:01:00
 s.OnNext(3);
-Debug.Log(reslut) // >
+Debug.Log(result) // >
 
 // 00:02:00
-Debug.Log(reslut) // >
+Debug.Log(result) // >
 
 // 00:03:00
-Debug.Log(reslut) // > 3
+Debug.Log(result) // > 3
+```
+
+### Skip
+
+```csharp
+var isCompleted = false;
+var s = new Subject<int>();
+s.Skip(TimeSpan.FromSeconds(1f)).Subscribe(
+    x => Debug.Log(x)
+);
+
+// 00:00:00
+s.OnNext(1); // >
+
+// 00:01:00
+s.OnNext(2); // > 2
+```
+
+### Take
+
+```csharp
+var isCompleted = false;
+var s = new Subject<int>();
+s.Take(TimeSpan.FromSeconds(1f)).Subscribe(
+    x => Debug.Log(x)
+);
+
+// 00:00:00
+s.OnNext(1); // > 1
+
+// 00:01:00
+s.OnNext(2); // > 
 ```

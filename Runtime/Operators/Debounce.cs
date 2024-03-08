@@ -10,11 +10,26 @@ namespace Edanoue.Rx
 {
     public static partial class ObservableExtensions
     {
+        /// <summary>
+        /// ToDo: Unity の Time ではなくて, System の TimeProvider を使用しています
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="timeSpan"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static Observable<T> Debounce<T>(this Observable<T> source, TimeSpan timeSpan)
         {
             return new Debounce<T>(source, timeSpan, ObservableSystem.DefaultTimeProvider);
         }
 
+        /// <summary>
+        /// ToDo: Unity の Time ではなくて, System の TimeProvider を使用しています
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="timeSpan"></param>
+        /// <param name="timeProvider"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static Observable<T> Debounce<T>(this Observable<T> source, TimeSpan timeSpan, TimeProvider timeProvider)
         {
             return new Debounce<T>(source, timeSpan, timeProvider);

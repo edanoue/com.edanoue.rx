@@ -25,6 +25,7 @@ namespace Edanoue.Rx
             Dispose(true);
         }
 
+
         public void OnNext(T value)
         {
             if (_completeState.IsCompleted)

@@ -11,6 +11,7 @@ namespace Edanoue.Rx
     public static partial class ObservableExtensions
     {
         /// <summary>
+        /// ToDo: Unity の Time ではなくて, System の TimeProvider を使用しています
         /// </summary>
         /// <param name="source"></param>
         /// <param name="duration"></param>
@@ -22,6 +23,7 @@ namespace Edanoue.Rx
         }
 
         /// <summary>
+        /// ToDo: Unity の Time ではなくて, System の TimeProvider を使用しています
         /// </summary>
         /// <param name="source"></param>
         /// <param name="duration"></param>
