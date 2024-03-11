@@ -252,7 +252,14 @@ namespace Edanoue.Rx
                     p._root = next;
                     if (next != null)
                     {
-                        next.Previous = Previous;
+                        if (next.Next != null)
+                        {
+                            next.Previous = Previous;
+                        }
+                        else
+                        {
+                            next.Previous = next;
+                        }
                     }
                 }
                 else
@@ -262,7 +269,24 @@ namespace Edanoue.Rx
                     prev.Next = next;
                     if (next != null)
                     {
-                        next.Previous = prev;
+                        if (next.Next != null)
+                        {
+                            next.Previous = prev;
+                        }
+                    }
+
+                    // modify root
+                    if (p._root != null)
+                    {
+                        // root is single node
+                        if (p._root.Next == null)
+                        {
+                            p._root.Previous = p._root;
+                        }
+                        else if (p._root.Previous == this)
+                        {
+                            p._root.Previous = prev;
+                        }
                     }
                 }
             }
