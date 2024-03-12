@@ -14,26 +14,29 @@
 
 ## Operators
 
-### Merge
-
+### CombineLatest
 ```csharp
-var s1 = new Subject<string>();
+var s1 = new Subject<int>();
 var s2 = new Subject<string>();
-var isCompleted = false;
 
-Observable
-    .Merge(s1, s2)
-    .Subscribe(
-        x => Debug.Log(x),      // OnNext
-        r => isCompleted = true // OnCompleted
-    );
+s1.
+    .CombineLatest(s2, (x, y) => $"{x} {y}")
+    .Subscribe(x => Debug.Log(x));
 
-s1.OnNext("foo"); // > foo
-s2.OnNext("bar"); // > bar
+s1.OnNext(1); // >
+s1.OnNext(2); // >
+s2.OnNext(3); // > "2 3"
+s1.OnNext(4); // > "4 3"
+s2.OnNext(5); // > "4 5"
+s2.OnNext(6); // > "4 6"
 
-s1.Dispose(); // isCompleted: false
-s2.Dispose(); // isCompleted: true
+s1.OnCompleted();
+s1.OnNext(7); // >
+s2.OnNext(8); // > "4 8"
 ```
+
+> [!NOTE]
+> Factory 版との違いは任意の型を組み合わせ可能なのと, 次のストリームに流す合成用の関数 (Select のような) を渡せる点
 
 ### Select
 
@@ -110,6 +113,54 @@ s.OnNext(1); // >
 s.OnNext(2); // > 2
 s.OnNext(3); // >
 s.OnNext(4); // > 4
+```
+
+## Factory operators
+
+### CombineLatest
+
+```csharp
+var s1 = new Subject<int>();
+var s2 = new Subject<int>();
+
+Observable
+    .CombineLatest(s1, s2)
+    .Subscribe(x => Debug.Log(x));
+
+s1.OnNext(1); // >
+s1.OnNext(2); // >
+s2.OnNext(3); // > [2, 3]
+s1.OnNext(4); // > [4, 3]
+s2.OnNext(5); // > [4, 5]
+s2.OnNext(6); // > [4, 6]
+
+s1.OnCompleted();
+s1.OnNext(7); // >
+s2.OnNext(8); // > [4, 8]
+```
+
+> [!NOTE]
+> Factory 版は同じ Type の Observable しか入らず, Array が帰ってくる
+
+### Merge
+
+```csharp
+var s1 = new Subject<string>();
+var s2 = new Subject<string>();
+var isCompleted = false;
+
+Observable
+    .Merge(s1, s2)
+    .Subscribe(
+        x => Debug.Log(x),      // OnNext
+        r => isCompleted = true // OnCompleted
+    );
+
+s1.OnNext("foo"); // > foo
+s2.OnNext("bar"); // > bar
+
+s1.Dispose(); // isCompleted: false
+s2.Dispose(); // isCompleted: true
 ```
 
 ## TimeProvider dependent operators
