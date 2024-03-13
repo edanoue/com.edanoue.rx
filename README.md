@@ -15,6 +15,7 @@
 ## Operators
 
 ### CombineLatest
+
 ```csharp
 var s1 = new Subject<int>();
 var s2 = new Subject<string>();
@@ -37,6 +38,70 @@ s2.OnNext(8); // > "4 8"
 
 > [!NOTE]
 > Factory 版との違いは任意の型を組み合わせ可能なのと, 次のストリームに流す合成用の関数 (Select のような) を渡せる点
+
+### Distinct
+
+```csharp
+var r = new List<int>();
+var s = new Subject<int>();
+s.Distinct().Subscribe(r.Add);
+
+s.OnNext(1); // > [1]
+s.OnNext(2); // > [1, 2]
+s.OnNext(1); // > [1, 2]
+s.OnNext(2); // > [1, 2]
+s.OnNext(3); // > [1, 2, 3]
+```
+
+- 一度登場した値は以降弾く
+
+### DistinctBy
+
+```csharp
+var r = new List<(string, int)>();
+var s = new Subject<(string, int)>();
+s.DistinctBy(static x => x.Item1).Subscribe(r.Add);
+
+s.OnNext(("foo", 1)); // > [("foo", 1)]
+s.OnNext(("bar", 2)); // > [("foo", 1), ("bar", 2)]
+s.OnNext(("foo", 3)); // > [("foo", 1), ("bar", 2)]
+s.OnNext(("bar", 4)); // > [("foo", 1), ("bar", 2)]
+s.OnNext(("baz", 5)); // > [("foo", 1), ("bar", 2), ("baz", 5)]
+```
+
+- Distinct の判定部分を任意の関数に変更できる
+
+### DistinctUntilChanged
+
+```csharp
+var r = new List<int>();
+var s = new Subject<int>();
+s.DistinctUntilChanged().Subscribe(r.Add);
+
+s.OnNext(1); // > [1]
+s.OnNext(2); // > [1, 2]
+s.OnNext(2); // > [1, 2]
+s.OnNext(1); // > [1, 2, 1]
+s.OnNext(2); // > [1, 2, 1, 2]
+```
+
+- 連続して登場した値は弾く
+
+### DistinctUntilChangedBy
+
+```csharp
+var r = new List<(string, int)>();
+var s = new Subject<(string, int)>();
+s.DistinctUntilChangedBy(static x => x.Item1).Subscribe(r.Add);
+
+s.OnNext(("foo", 1)); // > [("foo", 1)]
+s.OnNext(("bar", 2)); // > [("foo", 1), ("bar", 2)]
+s.OnNext(("bar", 3)); // > [("foo", 1), ("bar", 2)]
+s.OnNext(("foo", 4)); // > [("foo", 1), ("bar", 2), ("foo", 4)]
+s.OnNext(("bar", 5)); // > [("foo", 1), ("bar", 2), ("foo", 4), ("bar", 5)]
+```
+
+- DistinctUntilChanged の判定部分を任意の関数に変更できる
 
 ### Select
 
@@ -164,6 +229,9 @@ s2.Dispose(); // isCompleted: true
 ```
 
 ## TimeProvider dependent operators
+
+> [!NOTE]
+> 現在は Unity 内の Time ではなく, System の Time を使用している
 
 ### Debounce
 
