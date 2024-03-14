@@ -36,6 +36,9 @@ s1.OnNext(7); // >
 s2.OnNext(8); // > "4 8"
 ```
 
+- 登録した Source すべての OnNext が呼ばれるまで遮断する
+- 以降は各 Source 最新の値を指定した関数に入れて次に流す
+
 > [!NOTE]
 > Factory 版との違いは任意の型を組み合わせ可能なのと, 次のストリームに流す合成用の関数 (Select のような) を渡せる点
 
@@ -46,11 +49,11 @@ var r = new List<int>();
 var s = new Subject<int>();
 s.Distinct().Subscribe(r.Add);
 
-s.OnNext(1); // > [1]
-s.OnNext(2); // > [1, 2]
-s.OnNext(1); // > [1, 2]
-s.OnNext(2); // > [1, 2]
-s.OnNext(3); // > [1, 2, 3]
+s.OnNext(1); // [1]
+s.OnNext(2); // [1, 2]
+s.OnNext(1); // [1, 2]
+s.OnNext(2); // [1, 2]
+s.OnNext(3); // [1, 2, 3]
 ```
 
 - 一度登場した値は以降弾く
@@ -62,11 +65,11 @@ var r = new List<(string, int)>();
 var s = new Subject<(string, int)>();
 s.DistinctBy(static x => x.Item1).Subscribe(r.Add);
 
-s.OnNext(("foo", 1)); // > [("foo", 1)]
-s.OnNext(("bar", 2)); // > [("foo", 1), ("bar", 2)]
-s.OnNext(("foo", 3)); // > [("foo", 1), ("bar", 2)]
-s.OnNext(("bar", 4)); // > [("foo", 1), ("bar", 2)]
-s.OnNext(("baz", 5)); // > [("foo", 1), ("bar", 2), ("baz", 5)]
+s.OnNext(("foo", 1)); // [("foo", 1)]
+s.OnNext(("bar", 2)); // [("foo", 1), ("bar", 2)]
+s.OnNext(("foo", 3)); // [("foo", 1), ("bar", 2)]
+s.OnNext(("bar", 4)); // [("foo", 1), ("bar", 2)]
+s.OnNext(("baz", 5)); // [("foo", 1), ("bar", 2), ("baz", 5)]
 ```
 
 - Distinct の判定部分を任意の関数に変更できる
@@ -78,11 +81,11 @@ var r = new List<int>();
 var s = new Subject<int>();
 s.DistinctUntilChanged().Subscribe(r.Add);
 
-s.OnNext(1); // > [1]
-s.OnNext(2); // > [1, 2]
-s.OnNext(2); // > [1, 2]
-s.OnNext(1); // > [1, 2, 1]
-s.OnNext(2); // > [1, 2, 1, 2]
+s.OnNext(1); // [1]
+s.OnNext(2); // [1, 2]
+s.OnNext(2); // [1, 2]
+s.OnNext(1); // [1, 2, 1]
+s.OnNext(2); // [1, 2, 1, 2]
 ```
 
 - 連続して登場した値は弾く
@@ -94,11 +97,11 @@ var r = new List<(string, int)>();
 var s = new Subject<(string, int)>();
 s.DistinctUntilChangedBy(static x => x.Item1).Subscribe(r.Add);
 
-s.OnNext(("foo", 1)); // > [("foo", 1)]
-s.OnNext(("bar", 2)); // > [("foo", 1), ("bar", 2)]
-s.OnNext(("bar", 3)); // > [("foo", 1), ("bar", 2)]
-s.OnNext(("foo", 4)); // > [("foo", 1), ("bar", 2), ("foo", 4)]
-s.OnNext(("bar", 5)); // > [("foo", 1), ("bar", 2), ("foo", 4), ("bar", 5)]
+s.OnNext(("foo", 1)); // [("foo", 1)]
+s.OnNext(("bar", 2)); // [("foo", 1), ("bar", 2)]
+s.OnNext(("bar", 3)); // [("foo", 1), ("bar", 2)]
+s.OnNext(("foo", 4)); // [("foo", 1), ("bar", 2), ("foo", 4)]
+s.OnNext(("bar", 5)); // [("foo", 1), ("bar", 2), ("foo", 4), ("bar", 5)]
 ```
 
 - DistinctUntilChanged の判定部分を任意の関数に変更できる
@@ -106,12 +109,23 @@ s.OnNext(("bar", 5)); // > [("foo", 1), ("bar", 2), ("foo", 4), ("bar", 5)]
 ### Select
 
 ```csharp
+var r = new List<int>();
 var s = new Subject<int>();
-s.Select(x => x * 2).Subscribe(x => Debug.Log(x));
+s.Select(x => x * 2).Subscribe(r.Add);
 
-s.OnNext(1); // > 2
-s.OnNext(2); // > 4
+s.OnNext(1); // [2]
+s.OnNext(2); // [2, 4]
 ```
+```csharp
+var r = new List<string>();
+var s = new Subject<int>();
+s.Select(x => $"{x}").Subscribe(r.Add);
+
+s.OnNext(1); // ["1"]
+s.OnNext(2); // ["1", "2"]
+```
+
+- Source を指定した関数で加工して次に流す
 
 ### Skip
 
@@ -124,6 +138,8 @@ s.OnNext(2); // >
 s.OnNext(3); // > 3
 ```
 
+- 指定した回数に達するまで Source を遮断する
+
 ### SkipWhile
 
 ```csharp
@@ -133,10 +149,11 @@ s.SkipWhile(x => x <= 2).Subscribe(x => Debug.Log(x));
 s.OnNext(1); // >
 s.OnNext(2); // >
 s.OnNext(3); // > 3
-
-// 一度条件を満たすとそれ以降は通す
 s.OnNext(2); // > 2
 ```
+
+- 指定した条件を満たしている間 Source を遮断する
+- 一度でも条件を満たさなかった場合それ以降は通す
 
 ### Take
 
@@ -153,6 +170,8 @@ s.OnNext(2); // > 2 / isCompleted: true
 s.OnNext(3); // >   / isCompleted: true
 ```
 
+- 指定した回数に達すると OnCompleted を呼ぶ
+
 ### TakeWhile
 
 ```csharp
@@ -168,6 +187,9 @@ s.OnNext(2); // > 2 / isCompleted: false
 s.OnNext(3); // >   / isCompleted: true
 ```
 
+- 指定した条件を満たさなかった場合 OnCompleted を呼ぶ
+- Take と異なり OnNext も呼ばない
+
 ### Where
 
 ```csharp
@@ -179,6 +201,8 @@ s.OnNext(2); // > 2
 s.OnNext(3); // >
 s.OnNext(4); // > 4
 ```
+
+- 指定した条件を満たした場合のみ OnNext を通す
 
 ## Factory operators
 
