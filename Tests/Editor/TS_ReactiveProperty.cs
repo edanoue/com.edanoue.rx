@@ -38,6 +38,7 @@ namespace Edanoue.Rx
             Assert.That(counter, Is.EqualTo(3));
         }
 
+        [Test]
         public void DefaultValueTest()
         {
             using var rp = new ReactiveProperty<int>();
